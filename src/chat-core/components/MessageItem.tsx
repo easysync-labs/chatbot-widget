@@ -2,6 +2,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Message } from '../../features/chat/types'
 import { ProductCards } from './ProductCards'
+import { ProductOptions } from './ProductOptions'
 
 interface MessageItemProps {
   message: Message
@@ -54,8 +55,11 @@ export function MessageItem({ message }: MessageItemProps) {
           )}
         </div>
 
+        {!isUser && message.pendingSelections && message.pendingSelections.length > 0 && (
+          <ProductOptions pendingSelections={message.pendingSelections} />
+        )}
         {!isUser && message.items && message.items.length > 0 && (
-          <ProductCards items={message.items} />
+          <ProductCards items={message.items} totalAmount={message.totalAmount} />
         )}
       </div>
 

@@ -1,18 +1,33 @@
 export type MessageRole = 'user' | 'assistant' | 'system'
+export type OrderState = 'START' | 'ADDING_ITEMS' | 'SELECTING_PRODUCT' | 'CONFIRMING' | 'DONE'
 
-export interface ProductResult {
+export interface OrderProductOptionDto {
+  index: number
   productId: number
   subProductId: number
-  subDescription: string | null
-  shortDescription: string
-  fullDescription: string | null
-  manufacturer: string | null
-  score: number
+  productName: string
+  subDescription?: string
+  manufacturer?: string
 }
 
-export interface ResponseItem {
-  item: string
-  products: ProductResult[]
+export interface PendingItemSelectionDto {
+  itemIndex: number
+  itemName: string
+  quantity: number
+  options: OrderProductOptionDto[]
+}
+
+export interface SelectionEntry {
+  itemIndex: number
+  optionIndex: number
+}
+
+export interface OrderItemDto {
+  productId: number
+  productName: string
+  quantity: number
+  unitPrice: number
+  subtotal: number
 }
 
 export interface Message {
@@ -20,7 +35,9 @@ export interface Message {
   role: MessageRole
   content: string
   createdAt: number
-  items?: ResponseItem[]
+  items?: OrderItemDto[]
+  pendingSelections?: PendingItemSelectionDto[]
+  totalAmount?: number
 }
 
 export interface ChatState {
@@ -28,19 +45,22 @@ export interface ChatState {
   status: 'idle' | 'loading' | 'error'
   error: string | null
   apiUrl: string
+  bearerToken: string
+  orderId: number | null
+  orderState: OrderState | null
+  totalAmount: number | null
 }
 
 // API types
-export interface ChatApiMessage {
-  role: MessageRole
-  content: string
+export interface OrderMessageRequest {
+  message: string
 }
 
-export interface ChatApiRequest {
-  messages: ChatApiMessage[]
-}
-
-export interface ChatApiResponse {
+export interface OrderMessageResponse {
+  orderId: number
+  state: OrderState
   reply: string
-  items?: ResponseItem[]
+  items?: OrderItemDto[]
+  pendingSelections?: PendingItemSelectionDto[]
+  totalAmount?: number
 }
