@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { Provider } from 'react-redux'
+import { makeStore } from '../../app/store'
 import { useAppDispatch, useAppSelector } from '../../app/hooks'
 import { setApiUrl, setToken, clearMessages } from '../../features/chat/chatSlice'
 import { useChat } from '../hooks/useChat'
@@ -10,13 +12,24 @@ export interface ChatWindowProps {
   theme?: 'light' | 'dark'
   title?: string
   subtitle?: string
+  token?: string
 }
 
-export function ChatWindow({
+export function ChatWindow(props: ChatWindowProps) {
+  const store = useMemo(() => makeStore(), [])
+  return (
+    <Provider store={store}>
+      <ChatWindowInner {...props} />
+    </Provider>
+  )
+}
+
+function ChatWindowInner({
   apiUrl = '/api/order/chat/message',
   theme = 'light',
   title = 'EasySync Chat',
   subtitle = 'Assistente de vendas',
+  token,
 }: ChatWindowProps) {
   const dispatch = useAppDispatch()
   const bearerToken = useAppSelector((s) => s.chat.bearerToken)
@@ -27,6 +40,13 @@ export function ChatWindow({
   useEffect(() => {
     dispatch(setApiUrl(apiUrl))
   }, [apiUrl, dispatch])
+
+  useEffect(() => {
+    if (token !== undefined) {
+      dispatch(setToken(token))
+      setTokenInput(token)
+    }
+  }, [token, dispatch])
 
   const isDark = theme === 'dark'
 
@@ -64,7 +84,7 @@ export function ChatWindow({
           </div>
         </div>
         <div className="flex items-center gap-1">
-          <button
+          {!token && <button
             className={`chat-token-btn p-2 rounded-lg transition-colors ${
               bearerToken
                 ? 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100'
@@ -83,7 +103,7 @@ export function ChatWindow({
                 d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"
               />
             </svg>
-          </button>
+          </button>}
           <button
             className={`chat-clear-btn p-2 rounded-lg transition-colors ${
               isDark ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-500'
@@ -104,7 +124,7 @@ export function ChatWindow({
       </div>
 
       {/* Token Input Bar */}
-      {tokenVisible && (
+      {!token && tokenVisible && (
         <div
           className={`chat-token-bar flex items-center gap-2 px-4 py-2.5 border-b ${
             isDark ? 'bg-gray-800 border-gray-700' : 'bg-amber-50 border-amber-200'
