@@ -41,7 +41,7 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
   const visibleMessages = messages.filter((m) => m.role !== 'system')
 
   return (
-    <div className="chat-msg-list flex-1 overflow-y-auto px-4 py-4 space-y-0">
+    <div className="chat-msg-list flex-1 overflow-y-auto px-4 py-4 space-y-3">
       {visibleMessages.length === 0 && !isLoading && (
         <div className="chat-empty flex flex-col items-center justify-center h-full text-center py-16">
           <div className="chat-empty-icon w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center mb-4">

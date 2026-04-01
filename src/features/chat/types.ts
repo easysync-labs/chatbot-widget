@@ -44,7 +44,7 @@ export interface ChatState {
   messages: Message[]
   status: 'idle' | 'loading' | 'error'
   error: string | null
-  apiUrl: string
+  baseUrl: string
   bearerToken: string
   orderId: number | null
   orderState: OrderState | null

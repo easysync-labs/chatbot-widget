@@ -1,14 +1,12 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 import { ChatState, Message, OrderState } from './types'
-import { sendMessage, selectProductOption } from './chatThunks'
-
-const DEFAULT_API_URL = '/api/order/chat/message'
+import { sendMessage, selectProductOption, loginUser } from './chatThunks'
 
 const initialState: ChatState = {
   messages: [],
   status: 'idle',
   error: null,
-  apiUrl: DEFAULT_API_URL,
+  baseUrl: '',
   bearerToken: '',
   orderId: null,
   orderState: null,
@@ -34,8 +32,8 @@ const chatSlice = createSlice({
   name: 'chat',
   initialState,
   reducers: {
-    setApiUrl(state, action: PayloadAction<string>) {
-      state.apiUrl = action.payload
+    setBaseUrl(state, action: PayloadAction<string>) {
+      state.baseUrl = action.payload
     },
     setToken(state, action: PayloadAction<string>) {
       state.bearerToken = action.payload
@@ -54,6 +52,10 @@ const chatSlice = createSlice({
     clearError(state) {
       state.error = null
       state.status = 'idle'
+    },
+    setError(state, action: PayloadAction<string>) {
+      state.error = action.payload
+      state.status = 'error'
     },
   },
   extraReducers: (builder) => {
@@ -100,8 +102,21 @@ const chatSlice = createSlice({
         state.status = 'error'
         state.error = action.error.message ?? 'Erro ao selecionar produto'
       })
+      .addCase(loginUser.pending, (state) => {
+        state.status = 'loading'
+        state.error = null
+      })
+      .addCase(loginUser.fulfilled, (state, action) => {
+        state.status = 'idle'
+        state.bearerToken = action.payload
+        state.baseUrl = action.meta.arg.baseUrl
+      })
+      .addCase(loginUser.rejected, (state, action) => {
+        state.status = 'error'
+        state.error = action.error.message ?? 'Erro ao fazer login'
+      })
   },
 })
 
-export const { setApiUrl, setToken, addMessage, clearMessages, clearError } = chatSlice.actions
+export const { setBaseUrl, setToken, addMessage, clearMessages, clearError, setError } = chatSlice.actions
 export default chatSlice.reducer
