@@ -82,27 +82,31 @@ function ensureSocket() {
   })
 }
 
+/** RPC genérico via 'rpc' event do gateway. Server passthrough → general dispatcha. */
+async function rpc<T = unknown>(event: string, context?: unknown, timeoutMs = 30_000): Promise<{ ok: boolean; data?: T; error?: string; status?: number }> {
+  if (!state.socket?.connected) return { ok: false, error: 'not connected' }
+  try {
+    const ack: any = await state.socket
+      .timeout(timeoutMs)
+      .emitWithAck('rpc', { event, context: context ?? {} })
+    return ack ?? { ok: false, error: 'no ack' }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
 async function ping() {
   if (state.stopped || !state.socket?.connected) return
   const t0 = performance.now()
   state.pings++
-  try {
-    const ack = await state.socket.timeout(10_000).emitWithAck('health')
-    const latencyMs = Math.round(performance.now() - t0)
-    if (ack?.ok) {
-      state.ok++
-      post({ type: 'health', ok: true, latencyMs, info: ack })
-    } else {
-      state.fail++
-      post({ type: 'health', ok: false, latencyMs, error: 'no ok' })
-    }
-  } catch (err) {
+  const ack = await rpc('health', {}, 10_000)
+  const latencyMs = Math.round(performance.now() - t0)
+  if (ack.ok) {
+    state.ok++
+    post({ type: 'health', ok: true, latencyMs, info: ack.data })
+  } else {
     state.fail++
-    post({
-      type: 'health', ok: false,
-      latencyMs: Math.round(performance.now() - t0),
-      error: err instanceof Error ? err.message : String(err),
-    })
+    post({ type: 'health', ok: false, latencyMs, error: ack.error })
   }
   post({
     type: 'stats', jobs: state.jobs, pings: state.pings,
@@ -136,18 +140,15 @@ async function runOneJob(): Promise<void> {
   if (!state.trainEnabled || !state.socket?.connected) return
   const t0 = performance.now()
 
-  const ack: any = await state.socket
-    .timeout(30_000)
-    .emitWithAck('job_request')
-    .catch((e: any) => ({ ok: false, error: String(e) }))
-  if (!ack?.ok) {
-    post({ type: 'job', ok: false, error: ack?.error || 'no job' })
-    return
-  }
-  const job = ack.data as {
+  const ack = await rpc<{
     state_dict: Record<string, { data: number[]; shape: number[] }>
     corpus_chunk: string; n_steps: number; batch_size: number; ctx: number; lr: number
+  }>('job_request')
+  if (!ack.ok || !ack.data) {
+    post({ type: 'job', ok: false, error: ack.error || 'no job' })
+    return
   }
+  const job = ack.data
 
   const sd: StateDict = stateDictFromJSON(job.state_dict)
   const cell = new Cell(sd)
@@ -172,25 +173,22 @@ async function runOneJob(): Promise<void> {
   const lossFinal = losses.slice(-5).reduce((a, b) => a + b, 0) / Math.max(losses.slice(-5).length, 1)
 
   state.jobs++
-  const sub: any = await state.socket
-    .timeout(30_000)
-    .emitWithAck('submit', {
-      state_dict: stateDictToJSON(sd),
-      loss_inicial: lossInicial,
-      loss_final: lossFinal,
-      n_steps_completed: losses.length,
-      wall_time_seconds: wallMs / 1000,
-      arqueiro_id: 'js-worker',
-      device: 'cpu-js',
-    })
-    .catch((e: any) => ({ ok: false, error: String(e) }))
+  const sub = await rpc('submit', {
+    state_dict: stateDictToJSON(sd),
+    loss_inicial: lossInicial,
+    loss_final: lossFinal,
+    n_steps_completed: losses.length,
+    wall_time_seconds: wallMs / 1000,
+    arqueiro_id: 'js-worker',
+    device: 'cpu-js',
+  })
 
   post({
     type: 'job',
-    ok: !!sub?.ok,
+    ok: !!sub.ok,
     loss: lossFinal, lossInicial, lossFinal,
     nSteps: losses.length, wallMs,
-    error: sub?.ok ? undefined : sub?.error,
+    error: sub.ok ? undefined : sub.error,
   })
 }
 
