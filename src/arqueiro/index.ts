@@ -12,6 +12,7 @@
  * o middleware JWT já existente, então o worker chama mesma origem.
  */
 import ArqueiroWorker from './worker?worker&inline'
+import { connectArqueiroSocket, SocketHandle } from './socket'
 
 export interface ArqueiroConfig {
   /** URL base do general (ou rota proxiada do chatbot, ex: "/api/arqueiro"). */
@@ -22,10 +23,20 @@ export interface ArqueiroConfig {
   pingIntervalMs?: number
   /** Habilita training loop (v0.3.0+). Default true. Setar false pra ping-only. */
   trainEnabled?: boolean
+  /**
+   * Habilita canal WebSocket bidirecional (v0.4.0 fase 1). Default true se token presente.
+   * O canal conecta em `${generalUrl}/arqueiro` (socket.io namespace) com JWT no handshake.
+   * Server (NestJS ArqueiroGateway) valida e mantém conexão.
+   * Por enquanto só estabelece canal — broadcast/push do general vem na próxima fase.
+   */
+  socketEnabled?: boolean
   /** Callback opcional pra logs/telemetria local. */
   onPing?: (ok: boolean, status?: number, latencyMs?: number, info?: unknown, error?: string) => void
   onStats?: (s: { jobs: number; pings: number; ok: number; fail: number; uptimeS: number }) => void
   onJob?: (ok: boolean, info?: { loss?: number; lossInicial?: number; lossFinal?: number; nSteps?: number; wallMs?: number; error?: string }) => void
+  onSocketReady?: (info: { userId: string }) => void
+  onSocketEvent?: (eventName: string, payload: unknown) => void
+  onSocketDisconnect?: (reason: string) => void
 }
 
 export interface ArqueiroHandle {
@@ -56,14 +67,28 @@ export function startArqueiro(config: ArqueiroConfig): ArqueiroHandle {
     trainEnabled: config.trainEnabled ?? true,
   })
 
+  // Canal WS opcional (default ligado se temos token)
+  let sock: SocketHandle | null = null
+  const wantSocket = (config.socketEnabled ?? true) && !!config.token
+  if (wantSocket) {
+    sock = connectArqueiroSocket({
+      serverUrl: config.generalUrl,
+      token: config.token!,
+      onReady: config.onSocketReady,
+      onEvent: config.onSocketEvent,
+      onDisconnect: config.onSocketDisconnect,
+    })
+  }
+
   return {
     stop() {
       worker.postMessage({ type: 'stop' })
-      // Termina worker depois de pequeno delay pra deixar 'stopped' chegar
       setTimeout(() => worker.terminate(), 200)
+      sock?.stop()
     },
     updateToken(token: string | null) {
       worker.postMessage({ type: 'token', token })
+      sock?.updateToken(token)
     },
   }
 }
