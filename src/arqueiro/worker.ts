@@ -20,6 +20,14 @@ import { AdamW, clipGradNorm } from './adam'
 import { io, Socket } from 'socket.io-client'
 import { Client as StompClient, IFrame, IMessage } from '@stomp/stompjs'
 
+// SockJS espera window/document globals — em Web Worker eles não existem.
+// Polyfill mínimo pra que SockJS detecte transports baseados em XHR/WS sem
+// precisar de iframe-* (que dependem de DOM real).
+const _g = self as any
+if (typeof _g.window === 'undefined') _g.window = _g
+if (typeof _g.document === 'undefined') _g.document = { createElement: () => ({}), body: null }
+import SockJS from 'sockjs-client'
+
 type TransportKind = 'socketio' | 'stomp'
 
 type StartMsg = {
@@ -136,9 +144,12 @@ function makeStompTransport(): Transport {
     connect() {
       if (client || !state.serverUrl) return
       const url = state.serverUrl.replace(/\/+$/, '')
-      const wsUrl = url.replace(/^http(s?):/, 'ws$1:') + '/ws/websocket'
+      // Mesmo padrão do PDV existente (Websocket/index.tsx): SockJS em /ws.
+      // Spring com .withSockJS() expõe SockJS no /ws e WS direto em /ws/websocket.
+      // Usar SockJS aqui mantém um único path no nginx/cloudflared, e o canal
+      // /user/queue/... já é per-user (Spring resolve via convertAndSendToUser).
       client = new StompClient({
-        brokerURL: wsUrl,
+        webSocketFactory: () => new SockJS(`${url}/ws`),
         connectHeaders: { Authorization: `Bearer ${state.token || ''}` },
         reconnectDelay: 2_000,
         heartbeatIncoming: 30_000,
