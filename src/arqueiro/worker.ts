@@ -163,7 +163,9 @@ async function runOneJob(): Promise<void> {
     clipGradNorm(cell.grads, 1.0)
     opt.update(sd, cell.grads)
     losses.push(loss)
-    if (step % 5 === 4) await new Promise(r => setTimeout(r, 0))
+    // Yield no event loop a cada step pra socket.io poder processar ping/pong
+    // (treino síncrono Float32Array bloqueia handler do socket).
+    await new Promise(r => setTimeout(r, 0))
   }
   const wallMs = Math.round(performance.now() - t0)
   const lossInicial = losses.slice(0, 5).reduce((a, b) => a + b, 0) / Math.max(losses.slice(0, 5).length, 1)
