@@ -23,6 +23,11 @@ export interface ArqueiroConfig {
   trainEnabled?: boolean
   /** Protocolo do broker. 'socketio' (default, NestJS) ou 'stomp' (Spring /ws). */
   transport?: ArqueiroTransport
+  /** UserId do JWT — usado em transport=stomp quando o WebSocketConfig do
+   *  servidor exige path explícito /user/{userId}/queue/... (caso do PDV
+   *  Spring com ChannelInterceptor de segurança). Sem isso, o subscribe é
+   *  silenciosamente bloqueado. */
+  userId?: string | number
   // ---- Callbacks ----
   onConnect?: () => void
   onDisconnect?: (reason: string) => void
@@ -79,6 +84,7 @@ export function startArqueiro(config: ArqueiroConfig): ArqueiroHandle {
     pingIntervalMs: config.pingIntervalMs ?? 60_000,
     trainEnabled: config.trainEnabled ?? true,
     transport: config.transport ?? 'socketio',
+    userId: config.userId != null ? String(config.userId) : null,
   })
 
   return {

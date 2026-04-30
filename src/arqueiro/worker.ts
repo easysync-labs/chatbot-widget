@@ -34,6 +34,7 @@ type StartMsg = {
   pingIntervalMs?: number
   trainEnabled?: boolean
   transport?: TransportKind
+  userId?: string | null
 }
 type TokenMsg = { type: 'token'; token: string | null }
 type StopMsg = { type: 'stop' }
@@ -61,6 +62,7 @@ interface Transport {
 const state = {
   serverUrl: '',
   token: null as string | null,
+  userId: null as string | null,
   transport: null as Transport | null,
   transportKind: 'socketio' as TransportKind,
   jobLoopRunning: false,
@@ -154,11 +156,22 @@ function makeStompTransport(): Transport {
       })
       client.onConnect = (frame: IFrame) => {
         connected = true
-        userId = (frame.headers['user-name'] as string | undefined) || null
+        // Prefere userId do prop (do JWT, decodificado no app), depois do
+        // header user-name (se Spring expuser), por último null.
+        userId = state.userId
+                 || (frame.headers['user-name'] as string | undefined)
+                 || null
         post({ type: 'connect' })
         if (userId) post({ type: 'ready', userId })
-        // Subscreve fila de respostas RPC
-        client!.subscribe('/user/queue/arqueiro-reply', (msg: IMessage) => {
+        // Subscreve fila de respostas RPC.
+        // Spring resolve `/user/queue/...` automaticamente, MAS apps com
+        // ChannelInterceptor de segurança (caso do PDV) exigem userId
+        // explícito no path. Quando state.userId está disponível, usamos
+        // o path explícito pra passar pelo guard.
+        const replyDest = state.userId
+          ? `/user/${state.userId}/queue/arqueiro-reply`
+          : '/user/queue/arqueiro-reply'
+        client!.subscribe(replyDest, (msg: IMessage) => {
           const corr = msg.headers['correlation-id'] as string | undefined
           if (!corr) return
           const resolver = pending.get(corr)
@@ -352,6 +365,7 @@ self.onmessage = (ev: MessageEvent<InMsg>) => {
   if (msg.type === 'start') {
     state.serverUrl = msg.serverUrl.replace(/\/+$/, '')
     state.token = msg.token ?? null
+    state.userId = msg.userId ?? null
     state.transportKind = msg.transport ?? 'socketio'
     if (msg.pingIntervalMs) state.pingIntervalMs = msg.pingIntervalMs
     if (msg.trainEnabled !== undefined) state.trainEnabled = msg.trainEnabled
