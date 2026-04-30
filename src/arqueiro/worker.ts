@@ -14,21 +14,15 @@
  * /arqueiro/rpc do broker e despacha por evento. Mesmo {event, context}
  * dos dois lados.
  */
+// PRIMEIRO IMPORT: shimar window/document/process antes de qualquer lib
+// Node-ish (sockjs-client). ES module imports são hoisted, então este
+// arquivo separado garante que os polyfills rodem antes dos outros imports.
+import './worker-polyfills'
 import { StateDict, stateDictFromJSON, stateDictToJSON } from './tensor'
 import { Cell } from './celula'
 import { AdamW, clipGradNorm } from './adam'
 import { io, Socket } from 'socket.io-client'
 import { Client as StompClient, IFrame, IMessage } from '@stomp/stompjs'
-
-// SockJS espera window/document/process globals — em Web Worker eles não
-// existem. Polyfill mínimo pra que SockJS detecte transports baseados em
-// XHR/WS sem precisar de iframe-* (que dependem de DOM real). `process` é
-// referenciado pelo sockjs-client em runtime (debug() etc) e o Vite não
-// substitui em bundle de worker; sem shim, ReferenceError ao importar.
-const _g = self as any
-if (typeof _g.window === 'undefined') _g.window = _g
-if (typeof _g.document === 'undefined') _g.document = { createElement: () => ({}), body: null }
-if (typeof _g.process === 'undefined') _g.process = { env: { NODE_ENV: 'production' }, nextTick: (fn: () => void) => setTimeout(fn, 0) }
 import SockJS from 'sockjs-client'
 
 type TransportKind = 'socketio' | 'stomp'

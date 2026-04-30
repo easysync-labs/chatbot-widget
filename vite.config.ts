@@ -4,6 +4,12 @@ import { resolve } from 'path'
 
 export default defineConfig(({ mode }) => ({
   plugins: [react()],
+  // sockjs-client lê process.env.NODE_ENV literal no source — em Web Worker
+  // `process` não existe e dispara ReferenceError. Substituímos em build
+  // pra que a referência some do bundle.
+  define: {
+    'process.env.NODE_ENV': JSON.stringify(mode === 'lib' ? 'production' : 'development'),
+  },
   server: {
     port: 5173,
     proxy: {
