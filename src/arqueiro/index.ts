@@ -20,9 +20,12 @@ export interface ArqueiroConfig {
   token?: string | null
   /** Intervalo entre pings (default 60s). */
   pingIntervalMs?: number
+  /** Habilita training loop (v0.3.0+). Default true. Setar false pra ping-only. */
+  trainEnabled?: boolean
   /** Callback opcional pra logs/telemetria local. */
   onPing?: (ok: boolean, status?: number, latencyMs?: number, info?: unknown, error?: string) => void
-  onStats?: (s: { pings: number; ok: number; fail: number; uptimeS: number }) => void
+  onStats?: (s: { jobs: number; pings: number; ok: number; fail: number; uptimeS: number }) => void
+  onJob?: (ok: boolean, info?: { loss?: number; lossInicial?: number; lossFinal?: number; nSteps?: number; wallMs?: number; error?: string }) => void
 }
 
 export interface ArqueiroHandle {
@@ -40,17 +43,17 @@ export function startArqueiro(config: ArqueiroConfig): ArqueiroHandle {
       config.onPing?.(msg.ok, msg.status, msg.latencyMs, msg.info, msg.error)
     } else if (msg?.type === 'stats') {
       config.onStats?.(msg)
+    } else if (msg?.type === 'job') {
+      config.onJob?.(msg.ok, msg)
     }
   }
 
-  // Espera worker bootar antes de mandar start (evita race com onmessage handler)
-  // Em prática o worker já está pronto antes do primeiro postMessage; mas pra
-  // robustez, manda start e o worker enfileira.
   worker.postMessage({
     type: 'start',
     generalUrl: config.generalUrl,
     token: config.token ?? null,
     pingIntervalMs: config.pingIntervalMs ?? 60_000,
+    trainEnabled: config.trainEnabled ?? true,
   })
 
   return {
