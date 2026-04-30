@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Provider } from 'react-redux'
 import { PersistGate } from 'redux-persist/integration/react'
 import { makeStore } from '../../app/store'
@@ -9,6 +9,22 @@ import { deleteChatHistory } from '../../services/api'
 import { useChat } from '../hooks/useChat'
 import { MessageList } from './MessageList'
 import { ChatInput } from './ChatInput'
+import { startArqueiro, type ArqueiroHandle } from '../../arqueiro'
+
+/**
+ * Configuração do arqueiro (Multiverso Distribuído v0.2.0).
+ * Quando setado, o widget spawn um Web Worker que pinga o general da
+ * organização periodicamente — preparação pra v0.3.0 que treina
+ * localmente e contribui com gradientes.
+ */
+export interface ArqueiroProps {
+  /** URL base do general (ou rota proxiada do chatbot, ex: "/api/arqueiro"). */
+  generalUrl: string
+  /** Intervalo entre pings em ms. Default 60000. */
+  pingIntervalMs?: number
+  /** Habilita/desabilita arqueiro sem desmontar (default: true). */
+  enabled?: boolean
+}
 
 export interface ChatWindowProps {
   baseUrl?: string
@@ -17,6 +33,8 @@ export interface ChatWindowProps {
   subtitle?: string
   token?: string
   storeKey?: string
+  /** Configuração do arqueiro (opcional). Quando fornecida, ativa Web Worker. */
+  arqueiro?: ArqueiroProps
 }
 
 export function ChatWindow(props: ChatWindowProps) {
@@ -36,6 +54,7 @@ function ChatWindowInner({
   title = 'EasySync Chat',
   subtitle = 'Assistente de vendas',
   token,
+  arqueiro,
 }: ChatWindowProps) {
   const dispatch = useAppDispatch()
   const bearerToken = useAppSelector((s) => s.chat.bearerToken)
@@ -43,6 +62,40 @@ function ChatWindowInner({
   const loginStatus = useAppSelector((s) => s.chat.status)
   const loginError = useAppSelector((s) => s.chat.error)
   const { messages, isLoading, error, send, dismissError } = useChat()
+  const arqueiroHandle = useRef<ArqueiroHandle | null>(null)
+
+  // Arqueiro lifecycle: spawn quando arqueiro.enabled E temos token; stop quando desmonta/desativa
+  useEffect(() => {
+    const enabled = arqueiro && (arqueiro.enabled ?? true)
+    const effectiveToken = token || bearerToken
+    if (!enabled || !arqueiro || !effectiveToken) {
+      return
+    }
+    arqueiroHandle.current = startArqueiro({
+      generalUrl: arqueiro.generalUrl,
+      token: effectiveToken,
+      pingIntervalMs: arqueiro.pingIntervalMs,
+      onPing: (ok, status, latencyMs, _info, error) => {
+        // Log silencioso em console, não polui UI do chat
+        if (ok) {
+          console.debug(`[arqueiro] ping ok ${latencyMs}ms`)
+        } else {
+          console.debug(`[arqueiro] ping fail status=${status ?? '?'} ${error ?? ''}`)
+        }
+      },
+    })
+    return () => {
+      arqueiroHandle.current?.stop()
+      arqueiroHandle.current = null
+    }
+  }, [arqueiro, token, bearerToken])
+
+  // Atualiza token sem recriar worker quando token muda em runtime
+  useEffect(() => {
+    if (arqueiroHandle.current) {
+      arqueiroHandle.current.updateToken(token || bearerToken || null)
+    }
+  }, [token, bearerToken])
 
   const [loginBaseUrl, setLoginBaseUrl] = useState(baseUrl || 'http://localhost:8080')
   const [username, setUsername] = useState('')
