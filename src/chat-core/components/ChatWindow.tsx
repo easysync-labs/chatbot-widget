@@ -18,12 +18,14 @@ import { startArqueiro, type ArqueiroHandle } from '../../arqueiro'
  * localmente e contribui com gradientes.
  */
 export interface ArqueiroProps {
-  /** URL base do general (ou rota proxiada do chatbot, ex: "/api/arqueiro"). */
+  /** URL base do broker (NestJS pra socketio, Spring pra stomp). */
   generalUrl: string
   /** Intervalo entre pings em ms. Default 60000. */
   pingIntervalMs?: number
   /** Habilita/desabilita arqueiro sem desmontar (default: true). */
   enabled?: boolean
+  /** Protocolo do broker. 'socketio' (default, NestJS) ou 'stomp' (Spring /ws). */
+  transport?: 'socketio' | 'stomp'
 }
 
 export interface ChatWindowProps {
@@ -72,9 +74,10 @@ function ChatWindowInner({
       return
     }
     arqueiroHandle.current = startArqueiro({
-      // v0.5.0+: serverUrl (NestJS broker WS). Mantemos prop legada `generalUrl`.
+      // v0.5.0+: serverUrl (broker NestJS/Spring). Mantemos prop legada `generalUrl`.
       serverUrl: arqueiro.generalUrl,
       token: effectiveToken,
+      transport: arqueiro.transport ?? 'socketio',
       pingIntervalMs: arqueiro.pingIntervalMs,
       onHealth: (ok, latencyMs, _info, error) => {
         if (ok) console.debug(`[arqueiro] health ok ${latencyMs}ms`)

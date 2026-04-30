@@ -9,15 +9,20 @@
  */
 import ArqueiroWorker from './worker?worker&inline'
 
+export type ArqueiroTransport = 'socketio' | 'stomp'
+
 export interface ArqueiroConfig {
-  /** URL base do server NestJS (ex: https://api.easysync.com.br). */
+  /** URL base do broker (NestJS pra socketio, Spring pra stomp).
+   *  Ex: https://api.easysync.com.br ou https://homologacao-app.easysync.com.br */
   serverUrl: string
-  /** Bearer JWT pra handshake do socket.io. */
+  /** Bearer JWT — handshake (socketio.auth.token / STOMP CONNECT Authorization). */
   token?: string | null
   /** Intervalo entre pings via WS (default 60s). */
   pingIntervalMs?: number
   /** Habilita training loop (default true). */
   trainEnabled?: boolean
+  /** Protocolo do broker. 'socketio' (default, NestJS) ou 'stomp' (Spring /ws). */
+  transport?: ArqueiroTransport
   // ---- Callbacks ----
   onConnect?: () => void
   onDisconnect?: (reason: string) => void
@@ -58,6 +63,7 @@ export function startArqueiro(config: ArqueiroConfig): ArqueiroHandle {
     token: config.token ?? null,
     pingIntervalMs: config.pingIntervalMs ?? 60_000,
     trainEnabled: config.trainEnabled ?? true,
+    transport: config.transport ?? 'socketio',
   })
 
   return {

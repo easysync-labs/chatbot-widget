@@ -1,19 +1,26 @@
 /**
- * Arqueiro Web Worker (v0.5.0) — treina CelulaDist localmente, comunica via WS.
+ * Arqueiro Web Worker (v0.7.0) — treina CelulaDist localmente, comunica
+ * com o broker (NestJS via socket.io OU Spring via STOMP).
  *
- * REST do server foi removido em v0.5.0. Agora:
- *   - Conecta socket.io em ${serverUrl}/arqueiro com JWT no handshake
- *   - emit('job_request') → recebe state_dict + corpus
- *   - treina N steps batch B em JS puro
- *   - emit('submit', { state_dict, losses, ... }) → ack
- *   - sleep entre jobs e repete
+ * Dois transports selecionáveis:
+ *  - 'socketio' (default): conecta em ${serverUrl}/arqueiro com JWT no
+ *    handshake auth, usa emitWithAck('rpc', ...). NestJS easysync-server.
+ *  - 'stomp': conecta em ${serverUrl}/ws (SockJS-compatible Spring),
+ *    JWT no header Authorization do CONNECT, envia /app/arqueiro/rpc
+ *    com correlation-id, escuta /user/queue/arqueiro-reply. Integrator
+ *    Java.
  *
- * socket.io-client funciona em Web Worker (sem dependência de DOM).
+ * O general (volunteer.py em modo --general) é único: recebe POST
+ * /arqueiro/rpc do broker e despacha por evento. Mesmo {event, context}
+ * dos dois lados.
  */
 import { StateDict, stateDictFromJSON, stateDictToJSON } from './tensor'
 import { Cell } from './celula'
 import { AdamW, clipGradNorm } from './adam'
 import { io, Socket } from 'socket.io-client'
+import { Client as StompClient, IFrame, IMessage } from '@stomp/stompjs'
+
+type TransportKind = 'socketio' | 'stomp'
 
 type StartMsg = {
   type: 'start'
@@ -21,6 +28,7 @@ type StartMsg = {
   token?: string | null
   pingIntervalMs?: number
   trainEnabled?: boolean
+  transport?: TransportKind
 }
 type TokenMsg = { type: 'token'; token: string | null }
 type StopMsg = { type: 'stop' }
@@ -38,10 +46,18 @@ type OutMsg =
   | { type: 'stats'; jobs: number; pings: number; ok: number; fail: number; uptimeS: number }
   | { type: 'stopped' }
 
+interface Transport {
+  connect(): void
+  disconnect(): void
+  isConnected(): boolean
+  rpc<T = unknown>(event: string, context?: unknown, timeoutMs?: number): Promise<{ ok: boolean; data?: T; error?: string }>
+}
+
 const state = {
   serverUrl: '',
   token: null as string | null,
-  socket: null as Socket | null,
+  transport: null as Transport | null,
+  transportKind: 'socketio' as TransportKind,
   jobLoopRunning: false,
   pingTimer: 0 as unknown as ReturnType<typeof setInterval>,
   pingIntervalMs: 60_000,
@@ -58,45 +74,154 @@ function post(msg: OutMsg) {
   ;(self as unknown as Worker).postMessage(msg)
 }
 
-function ensureSocket() {
-  if (state.socket || !state.serverUrl) return
-  const url = state.serverUrl.replace(/\/+$/, '')
-  state.socket = io(`${url}/arqueiro`, {
-    auth: { token: state.token || '' },
-    transports: ['websocket', 'polling'],
-    reconnection: true,
-    reconnectionDelay: 2_000,
-    reconnectionDelayMax: 30_000,
-    timeout: 10_000,
-  })
-  state.socket.on('connect', () => post({ type: 'connect' }))
-  state.socket.on('disconnect', (reason: string) =>
-    post({ type: 'disconnect', reason }))
-  state.socket.on('ready', (info: { userId: string }) =>
-    post({ type: 'ready', userId: info.userId }))
-  state.socket.on('unauthorized', (info: { reason: string }) =>
-    post({ type: 'unauthorized', reason: info.reason }))
-  state.socket.onAny((event: string, payload: unknown) => {
-    if (['connect', 'disconnect', 'ready', 'unauthorized', 'connect_error'].includes(event)) return
-    post({ type: 'event', name: event, payload })
-  })
-}
+// ============================ Socket.IO Transport ============================
 
-/** RPC genérico via 'rpc' event do gateway. Server passthrough → general dispatcha. */
-async function rpc<T = unknown>(event: string, context?: unknown, timeoutMs = 30_000): Promise<{ ok: boolean; data?: T; error?: string; status?: number }> {
-  if (!state.socket?.connected) return { ok: false, error: 'not connected' }
-  try {
-    const ack: any = await state.socket
-      .timeout(timeoutMs)
-      .emitWithAck('rpc', { event, context: context ?? {} })
-    return ack ?? { ok: false, error: 'no ack' }
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+function makeSocketIOTransport(): Transport {
+  let socket: Socket | null = null
+  return {
+    connect() {
+      if (socket || !state.serverUrl) return
+      const url = state.serverUrl.replace(/\/+$/, '')
+      socket = io(`${url}/arqueiro`, {
+        auth: { token: state.token || '' },
+        transports: ['websocket', 'polling'],
+        reconnection: true,
+        reconnectionDelay: 2_000,
+        reconnectionDelayMax: 30_000,
+        timeout: 10_000,
+      })
+      socket.on('connect', () => post({ type: 'connect' }))
+      socket.on('disconnect', (reason: string) => post({ type: 'disconnect', reason }))
+      socket.on('ready', (info: { userId: string }) => post({ type: 'ready', userId: info.userId }))
+      socket.on('unauthorized', (info: { reason: string }) => post({ type: 'unauthorized', reason: info.reason }))
+      socket.onAny((event: string, payload: unknown) => {
+        if (['connect', 'disconnect', 'ready', 'unauthorized', 'connect_error'].includes(event)) return
+        post({ type: 'event', name: event, payload })
+      })
+    },
+    disconnect() {
+      socket?.disconnect()
+      socket = null
+    },
+    isConnected() {
+      return !!socket?.connected
+    },
+    async rpc(event, context, timeoutMs = 30_000) {
+      if (!socket?.connected) return { ok: false, error: 'not connected' }
+      try {
+        const ack: any = await socket.timeout(timeoutMs).emitWithAck('rpc', { event, context: context ?? {} })
+        return ack ?? { ok: false, error: 'no ack' }
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      }
+    },
   }
 }
 
+// ============================== STOMP Transport ==============================
+// Conecta em ${serverUrl}/ws via WebSocket puro (sem SockJS — Web Worker não
+// tem `window`). RPC via correlation-id no SEND e MESSAGE de retorno.
+
+function makeStompTransport(): Transport {
+  let client: StompClient | null = null
+  let connected = false
+  let userId: string | null = null
+  const pending = new Map<string, (payload: any) => void>()
+
+  function genCorrelationId() {
+    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+  }
+
+  return {
+    connect() {
+      if (client || !state.serverUrl) return
+      const url = state.serverUrl.replace(/\/+$/, '')
+      const wsUrl = url.replace(/^http(s?):/, 'ws$1:') + '/ws/websocket'
+      client = new StompClient({
+        brokerURL: wsUrl,
+        connectHeaders: { Authorization: `Bearer ${state.token || ''}` },
+        reconnectDelay: 2_000,
+        heartbeatIncoming: 30_000,
+        heartbeatOutgoing: 30_000,
+      })
+      client.onConnect = (frame: IFrame) => {
+        connected = true
+        userId = (frame.headers['user-name'] as string | undefined) || null
+        post({ type: 'connect' })
+        if (userId) post({ type: 'ready', userId })
+        // Subscreve fila de respostas RPC
+        client!.subscribe('/user/queue/arqueiro-reply', (msg: IMessage) => {
+          const corr = msg.headers['correlation-id'] as string | undefined
+          if (!corr) return
+          const resolver = pending.get(corr)
+          if (resolver) {
+            pending.delete(corr)
+            try {
+              resolver(JSON.parse(msg.body))
+            } catch (e) {
+              resolver({ ok: false, error: 'parse error: ' + (e instanceof Error ? e.message : String(e)) })
+            }
+          }
+        })
+      }
+      client.onStompError = (frame: IFrame) => {
+        const msg = frame.headers['message'] as string | undefined
+        post({ type: 'unauthorized', reason: msg || 'stomp error' })
+      }
+      client.onWebSocketClose = () => {
+        connected = false
+        post({ type: 'disconnect', reason: 'ws closed' })
+      }
+      client.activate()
+    },
+    disconnect() {
+      try {
+        client?.deactivate()
+      } catch (_) { /* noop */ }
+      client = null
+      connected = false
+      pending.clear()
+    },
+    isConnected() {
+      return connected
+    },
+    async rpc(event, context, timeoutMs = 30_000) {
+      if (!client || !connected) return { ok: false, error: 'not connected' }
+      const corr = genCorrelationId()
+      return await new Promise(resolve => {
+        const timer = setTimeout(() => {
+          pending.delete(corr)
+          resolve({ ok: false, error: 'timeout' })
+        }, timeoutMs)
+        pending.set(corr, (payload) => {
+          clearTimeout(timer)
+          resolve(payload)
+        })
+        try {
+          client!.publish({
+            destination: '/app/arqueiro/rpc',
+            headers: { 'correlation-id': corr, 'content-type': 'application/json' },
+            body: JSON.stringify({ event, context: context ?? {} }),
+          })
+        } catch (e) {
+          clearTimeout(timer)
+          pending.delete(corr)
+          resolve({ ok: false, error: e instanceof Error ? e.message : String(e) })
+        }
+      })
+    },
+  }
+}
+
+// =============================== Loops compartilhados =========================
+
+async function rpc<T = unknown>(event: string, context?: unknown, timeoutMs = 30_000) {
+  if (!state.transport) return { ok: false, error: 'transport not initialized' } as { ok: boolean; data?: T; error?: string }
+  return state.transport.rpc<T>(event, context, timeoutMs)
+}
+
 async function ping() {
-  if (state.stopped || !state.socket?.connected) return
+  if (state.stopped || !state.transport?.isConnected()) return
   const t0 = performance.now()
   state.pings++
   const ack = await rpc('health', {}, 10_000)
@@ -137,7 +262,7 @@ function getBatch(data: Int32Array, batch: number, ctx: number) {
 }
 
 async function runOneJob(): Promise<void> {
-  if (!state.trainEnabled || !state.socket?.connected) return
+  if (!state.trainEnabled || !state.transport?.isConnected()) return
   const t0 = performance.now()
 
   const ack = await rpc<{
@@ -164,8 +289,6 @@ async function runOneJob(): Promise<void> {
     clipGradNorm(cell.grads, 1.0)
     opt.update(sd, cell.grads)
     losses.push(loss)
-    // Yield no event loop a cada step pra socket.io poder processar ping/pong
-    // (treino síncrono Float32Array bloqueia handler do socket).
     await new Promise(r => setTimeout(r, 0))
   }
   const wallMs = Math.round(performance.now() - t0)
@@ -196,7 +319,7 @@ async function jobLoop() {
   if (state.jobLoopRunning) return
   state.jobLoopRunning = true
   while (!state.stopped) {
-    if (state.socket?.connected) {
+    if (state.transport?.isConnected()) {
       try {
         await runOneJob()
       } catch (err) {
@@ -213,24 +336,25 @@ self.onmessage = (ev: MessageEvent<InMsg>) => {
   if (msg.type === 'start') {
     state.serverUrl = msg.serverUrl.replace(/\/+$/, '')
     state.token = msg.token ?? null
+    state.transportKind = msg.transport ?? 'socketio'
     if (msg.pingIntervalMs) state.pingIntervalMs = msg.pingIntervalMs
     if (msg.trainEnabled !== undefined) state.trainEnabled = msg.trainEnabled
-    ensureSocket()
+    state.transport = state.transportKind === 'stomp' ? makeStompTransport() : makeSocketIOTransport()
+    state.transport.connect()
     if (state.pingTimer) clearInterval(state.pingTimer)
     state.pingTimer = setInterval(ping, state.pingIntervalMs)
     if (state.trainEnabled) void jobLoop()
   } else if (msg.type === 'token') {
     state.token = msg.token
-    if (state.socket) {
-      state.socket.disconnect()
-      state.socket = null
-      ensureSocket()
+    if (state.transport) {
+      state.transport.disconnect()
+      state.transport.connect()
     }
   } else if (msg.type === 'stop') {
     state.stopped = true
     if (state.pingTimer) clearInterval(state.pingTimer)
-    state.socket?.disconnect()
-    state.socket = null
+    state.transport?.disconnect()
+    state.transport = null
     post({ type: 'stopped' })
   }
 }
