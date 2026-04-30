@@ -174,13 +174,21 @@ function makeStompTransport(): Transport {
       }
       client.onStompError = (frame: IFrame) => {
         const msg = frame.headers['message'] as string | undefined
-        post({ type: 'unauthorized', reason: msg || 'stomp error' })
+        const detail = frame.body ? `: ${frame.body.slice(0, 200)}` : ''
+        post({ type: 'unauthorized', reason: (msg || 'stomp error') + detail })
       }
-      client.onWebSocketClose = () => {
+      client.onWebSocketError = (ev: any) => {
+        post({ type: 'event', name: 'ws_error', payload: { message: ev?.message, type: ev?.type } })
+      }
+      client.onWebSocketClose = (ev: any) => {
         connected = false
-        post({ type: 'disconnect', reason: 'ws closed' })
+        post({ type: 'disconnect', reason: `ws closed (code=${ev?.code} reason=${ev?.reason || 'n/a'})` })
       }
-      client.activate()
+      try {
+        client.activate()
+      } catch (e) {
+        post({ type: 'unauthorized', reason: 'activate failed: ' + (e instanceof Error ? e.message : String(e)) })
+      }
     },
     disconnect() {
       try {

@@ -43,9 +43,24 @@ export interface ArqueiroHandle {
 export function startArqueiro(config: ArqueiroConfig): ArqueiroHandle {
   const worker = new ArqueiroWorker()
 
+  // Erros não capturados dentro do worker normalmente ficam só no devtools
+  // do worker. Surface-amos no console main pra debug ficar visível.
+  worker.onerror = (ev: ErrorEvent) => {
+    console.error('[arqueiro:worker] erro fatal:', ev.message, ev.filename, ev.lineno, ev.error)
+  }
+  worker.onmessageerror = (ev: MessageEvent) => {
+    console.error('[arqueiro:worker] message error:', ev.data)
+  }
+
   worker.onmessage = (ev: MessageEvent) => {
     const m = ev.data
-    switch (m?.type) {
+    if (!m) return
+    // Log dos eventos vitais pra debug em produção
+    if (m.type === 'connect') console.debug('[arqueiro] connect')
+    if (m.type === 'disconnect') console.debug('[arqueiro] disconnect:', m.reason)
+    if (m.type === 'ready') console.debug('[arqueiro] ready user=', m.userId)
+    if (m.type === 'unauthorized') console.warn('[arqueiro] unauthorized:', m.reason)
+    switch (m.type) {
       case 'connect': config.onConnect?.(); break
       case 'disconnect': config.onDisconnect?.(m.reason); break
       case 'ready': config.onReady?.({ userId: m.userId }); break
