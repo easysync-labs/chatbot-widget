@@ -72,16 +72,17 @@ function ChatWindowInner({
       return
     }
     arqueiroHandle.current = startArqueiro({
-      generalUrl: arqueiro.generalUrl,
+      // v0.5.0+: serverUrl (NestJS broker WS). Mantemos prop legada `generalUrl`.
+      serverUrl: arqueiro.generalUrl,
       token: effectiveToken,
       pingIntervalMs: arqueiro.pingIntervalMs,
-      onPing: (ok, status, latencyMs, _info, error) => {
-        // Log silencioso em console, não polui UI do chat
-        if (ok) {
-          console.debug(`[arqueiro] ping ok ${latencyMs}ms`)
-        } else {
-          console.debug(`[arqueiro] ping fail status=${status ?? '?'} ${error ?? ''}`)
-        }
+      onHealth: (ok, latencyMs, _info, error) => {
+        if (ok) console.debug(`[arqueiro] health ok ${latencyMs}ms`)
+        else console.debug(`[arqueiro] health fail ${error ?? ''}`)
+      },
+      onJob: (ok, info) => {
+        if (ok) console.debug(`[arqueiro] job ok loss=${info?.lossFinal?.toFixed(3)} (${info?.nSteps} steps in ${info?.wallMs}ms)`)
+        else console.debug(`[arqueiro] job fail ${info?.error ?? ''}`)
       },
     })
     return () => {
