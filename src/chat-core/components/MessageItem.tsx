@@ -5,10 +5,12 @@ import { ProductCards } from './ProductCards'
 
 interface MessageItemProps {
   message: Message
-  onSelectProduct?: (product: ChatbotProduct, itemName: string, index: number) => void
+  onConfirmSelection?: (
+    selections: Array<{ item: string; product: ChatbotProduct }>,
+  ) => void
 }
 
-export function MessageItem({ message, onSelectProduct }: MessageItemProps) {
+export function MessageItem({ message, onConfirmSelection }: MessageItemProps) {
   const { role, content } = message
 
   if (role === 'system') {
@@ -56,7 +58,7 @@ export function MessageItem({ message, onSelectProduct }: MessageItemProps) {
         </div>
 
         {!isUser && message.items && message.items.length > 0 && (
-          <ProductCards items={message.items} onSelect={onSelectProduct} />
+          <ProductCards items={message.items} onConfirmSelection={onConfirmSelection} />
         )}
       </div>
 

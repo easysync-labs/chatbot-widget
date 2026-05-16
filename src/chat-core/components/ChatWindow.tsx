@@ -62,20 +62,24 @@ function ChatWindowInner({
   const { messages, isLoading, error, send, dismissError } = useChat()
 
   /**
-   * Seleção de produto via clique no card numerado: monta mensagem natural
-   * tipo "Quero a opção N: descrição — SKU X (R$ Y)". O LLM trata como
-   * continuação da conversa, usando o histórico (que JÁ inclui os produtos
-   * mostrados via system context). Equivalente a digitar "quero o 2".
+   * Confirmação da seleção múltipla (estilo legado): user marca 1 radio por
+   * grupo de item e clica "Confirmar". Monta mensagem multi-linha listando
+   * as escolhas e envia como turno do usuário. O LLM trata como continuação
+   * da conversa — sem state machine, sem endpoint dedicado de seleção.
    */
-  function handleSelectProduct(product: import('../../features/chat/types').ChatbotProduct,
-                                itemName: string,
-                                index: number) {
-    const desc = product.fullDescription || product.shortDescription || product.subDescription || ''
-    const price = product.effectivePrice && product.effectivePrice > 0
-      ? ` (R$ ${product.effectivePrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })})`
-      : ''
-    const msg = `Quero a opção ${index} de ${itemName}: ${desc} — SKU ${product.sku}${price}`.trim()
-    if (msg) send(msg)
+  function handleConfirmSelection(
+    selections: Array<{ item: string; product: import('../../features/chat/types').ChatbotProduct }>,
+  ) {
+    if (!selections.length) return
+    const lines = selections.map(({ item, product }) => {
+      const desc = product.fullDescription || product.shortDescription || product.subDescription || ''
+      const price = product.effectivePrice && product.effectivePrice > 0
+        ? ` (R$ ${product.effectivePrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })})`
+        : ''
+      return `- ${item.toUpperCase()}: ${desc} — SKU ${product.sku}${price}`
+    })
+    const msg = `Selecionei:\n${lines.join('\n')}`
+    send(msg)
   }
 
   // Arqueiro desativado em v0.8 (generais do multiverso off). Mantemos a prop
@@ -293,7 +297,7 @@ function ChatWindowInner({
       )}
 
       {/* Messages */}
-      <MessageList messages={messages} isLoading={isLoading} onSelectProduct={handleSelectProduct} />
+      <MessageList messages={messages} isLoading={isLoading} onConfirmSelection={handleConfirmSelection} />
 
       {/* Input */}
       <ChatInput onSend={send} isLoading={isLoading} />

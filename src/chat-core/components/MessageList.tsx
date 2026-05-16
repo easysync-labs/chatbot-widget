@@ -5,8 +5,10 @@ import { MessageItem } from './MessageItem'
 interface MessageListProps {
   messages: Message[]
   isLoading: boolean
-  /** Callback de seleção de produto via clique no card numerado. */
-  onSelectProduct?: (product: ChatbotProduct, itemName: string, index: number) => void
+  /** Callback ao confirmar uma seleção múltipla nos cards (uma escolha por grupo). */
+  onConfirmSelection?: (
+    selections: Array<{ item: string; product: ChatbotProduct }>,
+  ) => void
 }
 
 function TypingIndicator() {
@@ -33,7 +35,7 @@ function TypingIndicator() {
   )
 }
 
-export function MessageList({ messages, isLoading, onSelectProduct }: MessageListProps) {
+export function MessageList({ messages, isLoading, onConfirmSelection }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -63,7 +65,7 @@ export function MessageList({ messages, isLoading, onSelectProduct }: MessageLis
 
       {messages.map((message) =>
         message.role !== 'system' ? (
-          <MessageItem key={message.id} message={message} onSelectProduct={onSelectProduct} />
+          <MessageItem key={message.id} message={message} onConfirmSelection={onConfirmSelection} />
         ) : null
       )}
 
