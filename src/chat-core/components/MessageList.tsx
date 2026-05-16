@@ -5,8 +5,8 @@ import { MessageItem } from './MessageItem'
 interface MessageListProps {
   messages: Message[]
   isLoading: boolean
-  /** Callback de seleção de produto via clique no card. */
-  onSelectProduct?: (product: ChatbotProduct, itemName: string) => void
+  /** Callback de seleção de produto via clique no card numerado. */
+  onSelectProduct?: (product: ChatbotProduct, itemName: string, index: number) => void
 }
 
 function TypingIndicator() {

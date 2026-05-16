@@ -62,19 +62,19 @@ function ChatWindowInner({
   const { messages, isLoading, error, send, dismissError } = useChat()
 
   /**
-   * Seleção de produto via clique no card: monta mensagem natural pro chat
-   * ("quero o item X — descrição (SKU Y)") e envia como turno do usuário.
-   * O LLM trata como continuação da conversa — sem state machine, sem
-   * endpoint dedicado de seleção (rota /select-product foi removida na
-   * migração pra /api/chatbot/chat).
+   * Seleção de produto via clique no card numerado: monta mensagem natural
+   * tipo "Quero a opção N: descrição — SKU X (R$ Y)". O LLM trata como
+   * continuação da conversa, usando o histórico (que JÁ inclui os produtos
+   * mostrados via system context). Equivalente a digitar "quero o 2".
    */
   function handleSelectProduct(product: import('../../features/chat/types').ChatbotProduct,
-                                itemName: string) {
+                                itemName: string,
+                                index: number) {
     const desc = product.fullDescription || product.shortDescription || product.subDescription || ''
     const price = product.effectivePrice && product.effectivePrice > 0
       ? ` (R$ ${product.effectivePrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })})`
       : ''
-    const msg = `Quero ${itemName}: ${desc} — SKU ${product.sku}${price}`.trim()
+    const msg = `Quero a opção ${index} de ${itemName}: ${desc} — SKU ${product.sku}${price}`.trim()
     if (msg) send(msg)
   }
 

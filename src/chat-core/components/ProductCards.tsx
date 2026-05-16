@@ -4,11 +4,11 @@ interface ProductCardsProps {
   /** Itens agrupados retornados pelo backend /api/chatbot/chat */
   items: ChatbotResponseItem[]
   /**
-   * Callback de seleção. Quando definido, cada linha vira clicável e
-   * dispara o handler — geralmente envia uma mensagem follow-up ao chat
-   * tipo "quero o item N — descrição (SKU X)".
+   * Callback de seleção. Quando definido, cada linha vira clicável (com
+   * número 1, 2, 3... no estilo do legado) e dispara o handler — geralmente
+   * envia uma mensagem follow-up ao chat tipo "Quero a opção N: descrição".
    */
-  onSelect?: (product: ChatbotProduct, itemName: string) => void
+  onSelect?: (product: ChatbotProduct, itemName: string, index: number) => void
 }
 
 const fmt = (value?: number | null) =>
@@ -39,17 +39,32 @@ function PriceBlock({ p }: { p: ChatbotProduct }) {
 }
 
 function ProductRow({
-  p, itemName, onSelect,
+  p, itemName, index, onSelect,
 }: {
   p: ChatbotProduct
   itemName: string
-  onSelect?: (product: ChatbotProduct, itemName: string) => void
+  index: number
+  onSelect?: (product: ChatbotProduct, itemName: string, index: number) => void
 }) {
   const desc = pickDescription(p)
   const clickable = Boolean(onSelect)
 
+  const indexBadge = (
+    <span
+      className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold ${
+        clickable
+          ? 'bg-blue-100 text-blue-700 group-hover:bg-blue-500 group-hover:text-white'
+          : 'bg-gray-100 text-gray-600'
+      } transition-colors`}
+      aria-hidden="true"
+    >
+      {index}
+    </span>
+  )
+
   const body = (
     <>
+      {indexBadge}
       <div className="min-w-0 flex-1">
         <div className="text-sm font-medium text-gray-800 leading-snug truncate" title={desc}>
           {desc}
@@ -60,24 +75,15 @@ function ProductRow({
           {p.manufacturer && <span className="truncate">{p.manufacturer}</span>}
         </div>
       </div>
-      <div className="flex-shrink-0 text-right text-sm flex items-center gap-2">
+      <div className="flex-shrink-0 text-right text-sm">
         <PriceBlock p={p} />
-        {clickable && (
-          <span
-            className="text-blue-500 group-hover:text-blue-700 text-xs"
-            aria-hidden="true"
-            title="Selecionar"
-          >
-            ▶
-          </span>
-        )}
       </div>
     </>
   )
 
   if (!clickable) {
     return (
-      <li className="flex items-start justify-between gap-3 px-3 py-2 border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors">
+      <li className="flex items-center gap-3 px-3 py-2 border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors">
         {body}
       </li>
     )
@@ -87,9 +93,9 @@ function ProductRow({
     <li className="border-b border-gray-100 last:border-0">
       <button
         type="button"
-        onClick={() => onSelect!(p, itemName)}
-        className="group w-full flex items-start justify-between gap-3 px-3 py-2 text-left hover:bg-blue-50 focus:bg-blue-50 focus:outline-none transition-colors cursor-pointer"
-        aria-label={`Selecionar ${desc}`}
+        onClick={() => onSelect!(p, itemName, index)}
+        className="group w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-blue-50 focus:bg-blue-50 focus:outline-none transition-colors cursor-pointer"
+        aria-label={`Selecionar opção ${index}: ${desc}`}
       >
         {body}
       </button>
@@ -101,7 +107,7 @@ function ItemGroup({
   group, onSelect,
 }: {
   group: ChatbotResponseItem
-  onSelect?: (product: ChatbotProduct, itemName: string) => void
+  onSelect?: (product: ChatbotProduct, itemName: string, index: number) => void
 }) {
   if (!group.products?.length) return null
   return (
@@ -110,16 +116,17 @@ function ItemGroup({
         <span>{group.item}</span>
         {onSelect && (
           <span className="text-[10px] text-gray-400 normal-case font-normal">
-            clique pra selecionar
+            clique no número ou digite "quero o N"
           </span>
         )}
       </div>
       <ul className="bg-white">
-        {group.products.map((p) => (
+        {group.products.map((p, idx) => (
           <ProductRow
             key={`${p.productId}-${p.subProductId}`}
             p={p}
             itemName={group.item}
+            index={idx + 1}
             onSelect={onSelect}
           />
         ))}
@@ -138,3 +145,4 @@ export function ProductCards({ items, onSelect }: ProductCardsProps) {
     </div>
   )
 }
+

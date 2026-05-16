@@ -5,7 +5,7 @@ import { ProductCards } from './ProductCards'
 
 interface MessageItemProps {
   message: Message
-  onSelectProduct?: (product: ChatbotProduct, itemName: string) => void
+  onSelectProduct?: (product: ChatbotProduct, itemName: string, index: number) => void
 }
 
 export function MessageItem({ message, onSelectProduct }: MessageItemProps) {
