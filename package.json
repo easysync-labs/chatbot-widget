@@ -1,6 +1,6 @@
 {
   "name": "@easysync-labs/chatbot-widget",
-  "version": "0.7.5",
+  "version": "0.7.6",
   "description": "EasySync conversational order chatbot widget",
   "type": "module",
   "main": "dist/index.cjs.js",

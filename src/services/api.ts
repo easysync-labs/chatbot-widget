@@ -8,6 +8,71 @@ const PATHS = {
   login: '/api/login',
   chat: '/api/chatbot/chat',
   userProfiles: '/api/chatbot/user-profile',
+  storeProfile: '/api/chatbot/profile',
+}
+
+// -------------------- Store Profile (config da loja, isomorfismo cross-cliente) --------------------
+
+/**
+ * Tudo que vira "personalidade do chat" específica do cliente.
+ * Esses campos alimentam o system prompt do assistente, o prompt de extração
+ * de produtos e o domain guard. O backend é stateless em relação ao domínio —
+ * sem esses dados o bot funciona, mas perde a especialização do varejo.
+ */
+export interface ChatbotStoreProfileResponse {
+  razaoSocial?: string | null
+  tradingNames?: string[]
+  storeName?: string | null
+  assistantName?: string | null
+  domainKeywords?: string[]
+  businessSegment?: string | null
+  mainProducts?: string | null
+  targetAudience?: string | null
+  additionalContext?: string | null
+  promptPreview?: string | null
+}
+
+export interface ChatbotStoreProfileRequest {
+  storeName?: string | null
+  assistantName?: string | null
+  domainKeywords?: string[]
+  businessSegment?: string | null
+  mainProducts?: string | null
+  targetAudience?: string | null
+  additionalContext?: string | null
+}
+
+export async function getStoreProfile(
+  baseUrl: string,
+  bearerToken?: string,
+): Promise<ChatbotStoreProfileResponse> {
+  const headers: Record<string, string> = {}
+  if (bearerToken) headers['Authorization'] = `Bearer ${bearerToken}`
+  const r = await fetch(buildUrl(baseUrl, PATHS.storeProfile), { headers })
+  if (!r.ok) {
+    const text = await r.text().catch(() => '')
+    throw new Error(`Erro ${r.status}: ${text || r.statusText}`)
+  }
+  return r.json()
+}
+
+export async function updateStoreProfile(
+  baseUrl: string,
+  body: ChatbotStoreProfileRequest,
+  bearerToken?: string,
+): Promise<ChatbotStoreProfileResponse> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (bearerToken) headers['Authorization'] = `Bearer ${bearerToken}`
+  const r = await fetch(buildUrl(baseUrl, PATHS.storeProfile), {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify(body),
+  })
+  if (!r.ok) {
+    const text = await r.text().catch(() => '')
+    throw new Error(`Erro ${r.status}: ${text || r.statusText}`)
+  }
+  return r.json()
 }
 
 // -------------------- User Profile (admin) --------------------
