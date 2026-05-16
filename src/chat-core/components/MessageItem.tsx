@@ -1,13 +1,14 @@
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { Message } from '../../features/chat/types'
+import { ChatbotProduct, Message } from '../../features/chat/types'
 import { ProductCards } from './ProductCards'
 
 interface MessageItemProps {
   message: Message
+  onSelectProduct?: (product: ChatbotProduct, itemName: string) => void
 }
 
-export function MessageItem({ message }: MessageItemProps) {
+export function MessageItem({ message, onSelectProduct }: MessageItemProps) {
   const { role, content } = message
 
   if (role === 'system') {
@@ -55,7 +56,7 @@ export function MessageItem({ message }: MessageItemProps) {
         </div>
 
         {!isUser && message.items && message.items.length > 0 && (
-          <ProductCards items={message.items} />
+          <ProductCards items={message.items} onSelect={onSelectProduct} />
         )}
       </div>
 

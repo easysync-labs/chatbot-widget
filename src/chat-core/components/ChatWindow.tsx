@@ -61,6 +61,23 @@ function ChatWindowInner({
   const loginError = useAppSelector((s) => s.chat.error)
   const { messages, isLoading, error, send, dismissError } = useChat()
 
+  /**
+   * Seleção de produto via clique no card: monta mensagem natural pro chat
+   * ("quero o item X — descrição (SKU Y)") e envia como turno do usuário.
+   * O LLM trata como continuação da conversa — sem state machine, sem
+   * endpoint dedicado de seleção (rota /select-product foi removida na
+   * migração pra /api/chatbot/chat).
+   */
+  function handleSelectProduct(product: import('../../features/chat/types').ChatbotProduct,
+                                itemName: string) {
+    const desc = product.fullDescription || product.shortDescription || product.subDescription || ''
+    const price = product.effectivePrice && product.effectivePrice > 0
+      ? ` (R$ ${product.effectivePrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })})`
+      : ''
+    const msg = `Quero ${itemName}: ${desc} — SKU ${product.sku}${price}`.trim()
+    if (msg) send(msg)
+  }
+
   // Arqueiro desativado em v0.8 (generais do multiverso off). Mantemos a prop
   // pra retrocompat da lib, mas o Web Worker não é mais iniciado.
   useEffect(() => {
@@ -276,7 +293,7 @@ function ChatWindowInner({
       )}
 
       {/* Messages */}
-      <MessageList messages={messages} isLoading={isLoading} />
+      <MessageList messages={messages} isLoading={isLoading} onSelectProduct={handleSelectProduct} />
 
       {/* Input */}
       <ChatInput onSend={send} isLoading={isLoading} />

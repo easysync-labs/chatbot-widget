@@ -1,10 +1,12 @@
 import { useEffect, useRef } from 'react'
-import { Message } from '../../features/chat/types'
+import { ChatbotProduct, Message } from '../../features/chat/types'
 import { MessageItem } from './MessageItem'
 
 interface MessageListProps {
   messages: Message[]
   isLoading: boolean
+  /** Callback de seleção de produto via clique no card. */
+  onSelectProduct?: (product: ChatbotProduct, itemName: string) => void
 }
 
 function TypingIndicator() {
@@ -31,7 +33,7 @@ function TypingIndicator() {
   )
 }
 
-export function MessageList({ messages, isLoading }: MessageListProps) {
+export function MessageList({ messages, isLoading, onSelectProduct }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -61,7 +63,7 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
 
       {messages.map((message) =>
         message.role !== 'system' ? (
-          <MessageItem key={message.id} message={message} />
+          <MessageItem key={message.id} message={message} onSelectProduct={onSelectProduct} />
         ) : null
       )}
 
