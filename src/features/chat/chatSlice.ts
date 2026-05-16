@@ -1,6 +1,6 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
-import { ChatState, Message, OrderState } from './types'
-import { sendMessage, selectProductOption, loginUser } from './chatThunks'
+import { ChatState, Message } from './types'
+import { sendMessage, loginUser } from './chatThunks'
 
 const initialState: ChatState = {
   messages: [],
@@ -8,23 +8,19 @@ const initialState: ChatState = {
   error: null,
   baseUrl: '',
   bearerToken: '',
-  orderId: null,
-  orderState: null,
-  totalAmount: null,
+  sessionId: null,
 }
 
-function buildAssistantMessage(requestId: string, payload: ReturnType<typeof sendMessage.fulfilled>['payload'], prefix = 'assistant'): Message {
+function buildAssistantMessage(
+  requestId: string,
+  payload: ReturnType<typeof sendMessage.fulfilled>['payload'],
+): Message {
   return {
-    id: `${prefix}-${requestId}`,
+    id: `assistant-${requestId}`,
     role: 'assistant',
     content: payload.reply,
     createdAt: Date.now(),
     items: payload.items.length > 0 ? payload.items : undefined,
-    pendingSelections:
-      payload.state === 'SELECTING_PRODUCT' && payload.pendingSelections.length > 0
-        ? payload.pendingSelections
-        : undefined,
-    totalAmount: payload.totalAmount ?? undefined,
   }
 }
 
@@ -45,9 +41,7 @@ const chatSlice = createSlice({
       state.messages = []
       state.status = 'idle'
       state.error = null
-      state.orderId = null
-      state.orderState = null
-      state.totalAmount = null
+      state.sessionId = null  // próxima mensagem cria sessão nova no servidor
     },
     clearError(state) {
       state.error = null
@@ -56,6 +50,9 @@ const chatSlice = createSlice({
     setError(state, action: PayloadAction<string>) {
       state.error = action.payload
       state.status = 'error'
+    },
+    setSessionId(state, action: PayloadAction<string | null>) {
+      state.sessionId = action.payload
     },
   },
   extraReducers: (builder) => {
@@ -72,35 +69,15 @@ const chatSlice = createSlice({
       })
       .addCase(sendMessage.fulfilled, (state, action) => {
         state.status = 'idle'
-        state.orderId = action.payload.orderId
-        state.orderState = action.payload.state as OrderState
-        state.totalAmount = action.payload.totalAmount
+        // Captura sessionId do servidor (gerado no 1º turn, mantido nos seguintes).
+        if (action.payload.sessionId) {
+          state.sessionId = action.payload.sessionId
+        }
         state.messages.push(buildAssistantMessage(action.meta.requestId, action.payload))
       })
       .addCase(sendMessage.rejected, (state, action) => {
         state.status = 'error'
         state.error = action.error.message ?? 'Erro ao enviar mensagem'
-      })
-      .addCase(selectProductOption.pending, (state, action) => {
-        state.status = 'loading'
-        state.error = null
-        state.messages.push({
-          id: `user-select-${action.meta.requestId}`,
-          role: 'user',
-          content: action.meta.arg.summary,
-          createdAt: Date.now(),
-        })
-      })
-      .addCase(selectProductOption.fulfilled, (state, action) => {
-        state.status = 'idle'
-        state.orderId = action.payload.orderId
-        state.orderState = action.payload.state as OrderState
-        state.totalAmount = action.payload.totalAmount
-        state.messages.push(buildAssistantMessage(action.meta.requestId, action.payload, 'assistant-select'))
-      })
-      .addCase(selectProductOption.rejected, (state, action) => {
-        state.status = 'error'
-        state.error = action.error.message ?? 'Erro ao selecionar produto'
       })
       .addCase(loginUser.pending, (state) => {
         state.status = 'loading'
@@ -118,5 +95,13 @@ const chatSlice = createSlice({
   },
 })
 
-export const { setBaseUrl, setToken, addMessage, clearMessages, clearError, setError } = chatSlice.actions
+export const {
+  setBaseUrl,
+  setToken,
+  addMessage,
+  clearMessages,
+  clearError,
+  setError,
+  setSessionId,
+} = chatSlice.actions
 export default chatSlice.reducer

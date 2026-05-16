@@ -1,33 +1,33 @@
 export type MessageRole = 'user' | 'assistant' | 'system'
-export type OrderState = 'START' | 'ADDING_ITEMS' | 'SELECTING_PRODUCT' | 'CONFIRMING' | 'DONE'
 
-export interface OrderProductOptionDto {
-  index: number
+/**
+ * Produto retornado pela busca vetorial do chatbot.
+ * Espelha {@code ProductSearchResult} do integrator
+ * (com.easysync.integrator.dto.Chatbot.ProductSearchResult).
+ */
+export interface ChatbotProduct {
   productId: number
   subProductId: number
-  productName: string
+  sku: string
+  shortDescription?: string
+  fullDescription?: string
   subDescription?: string
   manufacturer?: string
+  detailedDescription?: string
+  score: number
+
+  // Hidratado via ProductPricePolicySummary da filial do usuário
+  priceCompanyId?: number | null
+  retailPrice?: number | null
+  retailPromotionPrice?: number | null
+  wholesalePrice?: number | null
+  effectivePrice?: number | null
 }
 
-export interface PendingItemSelectionDto {
-  itemIndex: number
-  itemName: string
-  quantity: number
-  options: OrderProductOptionDto[]
-}
-
-export interface SelectionEntry {
-  itemIndex: number
-  optionIndex: number
-}
-
-export interface OrderItemDto {
-  productId: number
-  productName: string
-  quantity: number
-  unitPrice: number
-  subtotal: number
+/** Grupo de produtos para um item extraído da mensagem do usuário. */
+export interface ChatbotResponseItem {
+  item: string
+  products: ChatbotProduct[]
 }
 
 export interface Message {
@@ -35,9 +35,8 @@ export interface Message {
   role: MessageRole
   content: string
   createdAt: number
-  items?: OrderItemDto[]
-  pendingSelections?: PendingItemSelectionDto[]
-  totalAmount?: number
+  /** Itens agrupados retornados pelo backend para esta mensagem (se houver). */
+  items?: ChatbotResponseItem[]
 }
 
 export interface ChatState {
@@ -46,21 +45,26 @@ export interface ChatState {
   error: string | null
   baseUrl: string
   bearerToken: string
-  orderId: number | null
-  orderState: OrderState | null
-  totalAmount: number | null
+  /** Identificador da sessão de chat persistida no servidor (gerado no 1º turn). */
+  sessionId: string | null
 }
 
-// API types
-export interface OrderMessageRequest {
-  message: string
+// -------------------- API types --------------------
+
+export interface ChatbotChatMessage {
+  role: MessageRole
+  content: string
 }
 
-export interface OrderMessageResponse {
-  orderId: number
-  state: OrderState
+export interface ChatbotChatRequest {
+  messages: ChatbotChatMessage[]
+  sessionId?: string
+  topKProducts?: number
+  model?: string
+}
+
+export interface ChatbotChatResponse {
   reply: string
-  items?: OrderItemDto[]
-  pendingSelections?: PendingItemSelectionDto[]
-  totalAmount?: number
+  items: ChatbotResponseItem[]
+  sessionId: string
 }

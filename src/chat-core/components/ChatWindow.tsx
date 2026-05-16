@@ -1,30 +1,27 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Provider } from 'react-redux'
 import { PersistGate } from 'redux-persist/integration/react'
 import { makeStore } from '../../app/store'
 import { useAppDispatch, useAppSelector } from '../../app/hooks'
-import { setBaseUrl, setToken, clearMessages, setError } from '../../features/chat/chatSlice'
+import { setBaseUrl, setToken, clearMessages } from '../../features/chat/chatSlice'
 import { loginUser } from '../../features/chat/chatThunks'
-import { deleteChatHistory } from '../../services/api'
 import { useChat } from '../hooks/useChat'
 import { MessageList } from './MessageList'
 import { ChatInput } from './ChatInput'
-import { startArqueiro, type ArqueiroHandle } from '../../arqueiro'
+import { ProfileSettings } from './ProfileSettings'
 
 /**
  * Configuração do arqueiro (Multiverso Distribuído v0.2.0).
- * Quando setado, o widget spawn um Web Worker que pinga o general da
- * organização periodicamente — preparação pra v0.3.0 que treina
- * localmente e contribui com gradientes.
+ *
+ * @deprecated v0.8 — os generais do multiverso estão desativados.
+ *   A prop continua aceita pra retrocompatibilidade da lib, mas o
+ *   Web Worker NÃO é mais inicializado. Setar isso não tem efeito;
+ *   um aviso é logado no console.
  */
 export interface ArqueiroProps {
-  /** URL base do broker (NestJS pra socketio, Spring pra stomp). */
   generalUrl: string
-  /** Intervalo entre pings em ms. Default 60000. */
   pingIntervalMs?: number
-  /** Habilita/desabilita arqueiro sem desmontar (default: true). */
   enabled?: boolean
-  /** Protocolo do broker. 'socketio' (default, NestJS) ou 'stomp' (Spring /ws). */
   transport?: 'socketio' | 'stomp'
 }
 
@@ -60,50 +57,25 @@ function ChatWindowInner({
 }: ChatWindowProps) {
   const dispatch = useAppDispatch()
   const bearerToken = useAppSelector((s) => s.chat.bearerToken)
-  const storedBaseUrl = useAppSelector((s) => s.chat.baseUrl)
   const loginStatus = useAppSelector((s) => s.chat.status)
   const loginError = useAppSelector((s) => s.chat.error)
   const { messages, isLoading, error, send, dismissError } = useChat()
-  const arqueiroHandle = useRef<ArqueiroHandle | null>(null)
 
-  // Arqueiro lifecycle: spawn quando arqueiro.enabled E temos token; stop quando desmonta/desativa
+  // Arqueiro desativado em v0.8 (generais do multiverso off). Mantemos a prop
+  // pra retrocompat da lib, mas o Web Worker não é mais iniciado.
   useEffect(() => {
-    const enabled = arqueiro && (arqueiro.enabled ?? true)
-    const effectiveToken = token || bearerToken
-    if (!enabled || !arqueiro || !effectiveToken) {
-      return
+    if (arqueiro) {
+      console.warn(
+        '[chatbot-widget] prop "arqueiro" está deprecada (generais desativados). ' +
+        'Remova essa prop pra silenciar este aviso.'
+      )
     }
-    arqueiroHandle.current = startArqueiro({
-      // v0.5.0+: serverUrl (broker NestJS/Spring). Mantemos prop legada `generalUrl`.
-      serverUrl: arqueiro.generalUrl,
-      token: effectiveToken,
-      transport: arqueiro.transport ?? 'socketio',
-      pingIntervalMs: arqueiro.pingIntervalMs,
-      onHealth: (ok, latencyMs, _info, error) => {
-        if (ok) console.debug(`[arqueiro] health ok ${latencyMs}ms`)
-        else console.debug(`[arqueiro] health fail ${error ?? ''}`)
-      },
-      onJob: (ok, info) => {
-        if (ok) console.debug(`[arqueiro] job ok loss=${info?.lossFinal?.toFixed(3)} (${info?.nSteps} steps in ${info?.wallMs}ms)`)
-        else console.debug(`[arqueiro] job fail ${info?.error ?? ''}`)
-      },
-    })
-    return () => {
-      arqueiroHandle.current?.stop()
-      arqueiroHandle.current = null
-    }
-  }, [arqueiro, token, bearerToken])
-
-  // Atualiza token sem recriar worker quando token muda em runtime
-  useEffect(() => {
-    if (arqueiroHandle.current) {
-      arqueiroHandle.current.updateToken(token || bearerToken || null)
-    }
-  }, [token, bearerToken])
+  }, [arqueiro])
 
   const [loginBaseUrl, setLoginBaseUrl] = useState(baseUrl || 'http://localhost:8080')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   useEffect(() => {
     dispatch(setBaseUrl(baseUrl))
@@ -235,6 +207,20 @@ function ChatWindowInner({
           </div>
         </div>
         <div className="flex items-center gap-1">
+          <button
+            className={`chat-settings-btn p-2 rounded-lg transition-colors ${
+              isDark ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-500'
+            }`}
+            onClick={() => setSettingsOpen(true)}
+            title="Configurações (admin)"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
           {!token && (
             <button
               className={`chat-logout-btn p-2 rounded-lg transition-colors ${
@@ -253,13 +239,11 @@ function ChatWindowInner({
             className={`chat-clear-btn p-2 rounded-lg transition-colors ${
               isDark ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-500'
             }`}
-            onClick={async () => {
-              try {
-                await deleteChatHistory(baseUrl || storedBaseUrl, bearerToken || undefined)
-                dispatch(clearMessages())
-              } catch (err) {
-                dispatch(setError(err instanceof Error ? err.message : 'Erro ao excluir histórico'))
-              }
+            onClick={() => {
+              // clearMessages limpa também o sessionId — o próximo turno cria
+              // sessão nova no servidor. Sem chamada API: o histórico antigo
+              // fica arquivado no banco mas inacessível pra esta UI.
+              dispatch(clearMessages())
             }}
             title="Limpar conversa"
           >
@@ -296,6 +280,16 @@ function ChatWindowInner({
 
       {/* Input */}
       <ChatInput onSend={send} isLoading={isLoading} />
+
+      {/* Settings modal */}
+      {settingsOpen && (
+        <ProfileSettings
+          baseUrl={baseUrl || ''}
+          bearerToken={token || bearerToken || ''}
+          onClose={() => setSettingsOpen(false)}
+          isDark={isDark}
+        />
+      )}
     </div>
   )
 }
