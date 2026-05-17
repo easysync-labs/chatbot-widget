@@ -9,6 +9,7 @@ import { useChat } from '../hooks/useChat'
 import { MessageList } from './MessageList'
 import { ChatInput } from './ChatInput'
 import { ProfileSettings } from './ProfileSettings'
+import { notifyProductSelected } from '../../services/api'
 
 /**
  * Configuração do arqueiro (Multiverso Distribuído v0.2.0).
@@ -63,14 +64,36 @@ function ChatWindowInner({
 
   /**
    * Confirmação da seleção múltipla (estilo legado): user marca 1 radio por
-   * grupo de item e clica "Confirmar". Monta mensagem multi-linha listando
-   * as escolhas e envia como turno do usuário. O LLM trata como continuação
-   * da conversa — sem state machine, sem endpoint dedicado de seleção.
+   * grupo de item e clica "Confirmar". Para cada seleção:
+   *  - Notifica o backend (`POST /api/chatbot/select-product`) que dispara
+   *    `ProductSelectedEvent` via STOMP — o PDV ouve e adiciona ao carrinho.
+   *  - Monta mensagem multi-linha listando as escolhas e envia como turno
+   *    do usuário pro LLM continuar a conversa.
    */
   function handleConfirmSelection(
     selections: Array<{ item: string; product: import('../../features/chat/types').ChatbotProduct }>,
   ) {
     if (!selections.length) return
+
+    const effectiveToken = token || bearerToken
+    if (effectiveToken) {
+      for (const { product } of selections) {
+        notifyProductSelected(
+          baseUrl,
+          {
+            productId: product.productId,
+            subProductId: product.subProductId,
+            productName: product.shortDescription || product.fullDescription || null,
+            subDescription: product.subDescription || null,
+            manufacturer: product.manufacturer || null,
+            unitPrice: product.effectivePrice ?? null,
+            quantity: 1,
+          },
+          effectiveToken,
+        )
+      }
+    }
+
     const lines = selections.map(({ item, product }) => {
       const desc = product.fullDescription || product.shortDescription || product.subDescription || ''
       const price = product.effectivePrice && product.effectivePrice > 0

@@ -9,6 +9,45 @@ const PATHS = {
   chat: '/api/chatbot/chat',
   userProfiles: '/api/chatbot/user-profile',
   storeProfile: '/api/chatbot/profile',
+  selectProduct: '/api/chatbot/select-product',
+}
+
+// -------------------- Select Product (carrinho via STOMP) --------------------
+
+/**
+ * Notifica o backend de uma seleção do widget. O backend dispara
+ * ProductSelectedEvent via STOMP no canal privado do usuário, e o PDV
+ * adiciona o produto ao carrinho aberto.
+ *
+ * Fire-and-forget: o widget não bloqueia na resposta — se o backend falhar,
+ * a conversa segue normalmente (o LLM ainda recebe o "Selecionei:" como texto).
+ */
+export interface ChatbotSelectProductRequest {
+  productId: number
+  subProductId: number
+  productName?: string | null
+  subDescription?: string | null
+  manufacturer?: string | null
+  unitPrice?: number | null
+  quantity?: number
+}
+
+export async function notifyProductSelected(
+  baseUrl: string,
+  body: ChatbotSelectProductRequest,
+  bearerToken?: string,
+): Promise<void> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (bearerToken) headers['Authorization'] = `Bearer ${bearerToken}`
+  try {
+    await fetch(buildUrl(baseUrl, PATHS.selectProduct), {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    })
+  } catch (err) {
+    console.warn('[chatbot-widget] notifyProductSelected falhou', err)
+  }
 }
 
 // -------------------- Store Profile (config da loja, isomorfismo cross-cliente) --------------------
