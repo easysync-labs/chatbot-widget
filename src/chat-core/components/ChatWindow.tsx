@@ -3,7 +3,7 @@ import { Provider } from 'react-redux'
 import { PersistGate } from 'redux-persist/integration/react'
 import { makeStore } from '../../app/store'
 import { useAppDispatch, useAppSelector } from '../../app/hooks'
-import { setBaseUrl, setToken, clearMessages } from '../../features/chat/chatSlice'
+import { setBaseUrl, setToken, clearMessages, addMessage } from '../../features/chat/chatSlice'
 import { loginUser } from '../../features/chat/chatThunks'
 import { useChat } from '../hooks/useChat'
 import { MessageList } from './MessageList'
@@ -63,12 +63,12 @@ function ChatWindowInner({
   const { messages, isLoading, error, send, dismissError } = useChat()
 
   /**
-   * Confirmação da seleção múltipla (estilo legado): user marca 1 radio por
-   * grupo de item e clica "Confirmar". Para cada seleção:
+   * Confirmação da seleção múltipla: user marca 1 radio por grupo e clica
+   * "Confirmar". Para cada seleção:
    *  - Notifica o backend (`POST /api/chatbot/select-product`) que dispara
    *    `ProductSelectedEvent` via STOMP — o PDV ouve e adiciona ao carrinho.
-   *  - Monta mensagem multi-linha listando as escolhas e envia como turno
-   *    do usuário pro LLM continuar a conversa.
+   *  - Adiciona uma mensagem local de confirmação no chat (sem chamar o
+   *    LLM, sem disparar nova busca de produtos).
    */
   function handleConfirmSelection(
     selections: Array<{ item: string; product: import('../../features/chat/types').ChatbotProduct }>,
@@ -94,15 +94,20 @@ function ChatWindowInner({
       }
     }
 
-    const lines = selections.map(({ item, product }) => {
-      const desc = product.fullDescription || product.shortDescription || product.subDescription || ''
-      const price = product.effectivePrice && product.effectivePrice > 0
-        ? ` (R$ ${product.effectivePrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })})`
-        : ''
-      return `- ${item.toUpperCase()}: ${desc} — SKU ${product.sku}${price}`
+    const lines = selections.map(({ product }) => {
+      const desc = product.shortDescription || product.fullDescription || product.subDescription || product.sku
+      return `• ${desc}`
     })
-    const msg = `Selecionei:\n${lines.join('\n')}`
-    send(msg)
+    const confirmationText = selections.length === 1
+      ? `Adicionado ao carrinho:\n${lines[0]}`
+      : `Adicionados ao carrinho:\n${lines.join('\n')}`
+
+    dispatch(addMessage({
+      id: `cart-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      role: 'assistant',
+      content: confirmationText,
+      createdAt: Date.now(),
+    }))
   }
 
   // Arqueiro desativado em v0.8 (generais do multiverso off). Mantemos a prop
